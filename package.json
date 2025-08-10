@@ -1,0 +1,17 @@
+{
+  "name": "podcast-app",
+  "version": "1.0.0",
+  "description": "podcast player to listen to podcasts",
+  "main": "index.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "author": "Christian C",
+  "license": "ISC",
+  "dependencies": {
+    "crypto-js": "^4.2.0",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "node-fetch": "^2.7.0"
+  }
+}
