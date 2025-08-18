@@ -4,6 +4,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const searchButton = document.getElementById("searchButton");
   const resetButton = document.getElementById("resetButton");
   const responseContainer = document.getElementById("response");
+  const loader = document.getElementById('loader');
 
   //Reset search history
   function resetHistory() {
@@ -72,6 +73,40 @@ document.addEventListener("DOMContentLoaded", () => {
     const date = new Date(timestamp * 1000);
     return date.toLocaleDateString();
   }
+
+  // Show loading animation
+  function showLoader(){
+    loader.style.display = 'flex';
+    responseContainer.style.display = 'none';
+  }
+  function hideLoader(){
+    loader.style.display = 'none';
+    responseContainer.style.display = 'flex';
+  }
+
+  // Set up to load podcast / episode images
+  function handleImageLoad(limit){
+    const images = responseContainer.getElementsByTagName('img');
+    let imagesToLoad = Math.min(images.length, limit);
+    const fallbackImage = './podcast-default.png';
+
+    if(imagesToLoad === 0){
+        hideLoader();
+        return;
+    }
+    Array.from(images).slice(0, limit).forEach(img => {
+        img.onload = img.onerror = () => {
+            imagesToLoad--;
+            if(img.complete && !img.naturalWidth){
+                img.src = fallbackImage;
+            }
+            if(imagesToLoad === 0){
+                hideLoader();
+            }
+        }
+    });
+  }
+
   // Search Podcasts
   async function searchPodcast() {
     const searchTerm = searchInput.value.trim();
@@ -81,17 +116,31 @@ document.addEventListener("DOMContentLoaded", () => {
       loadSearchHistory();
     } else {
       responseContainer.innerText = "Please enter a podcast title.";
+      return;
     }
+
+    showLoader();
+
     try{
         const response = await fetch(`/api/search?q=${encodeURIComponent(searchTerm)}`);
     
         const data = await response.json();
         responseContainer.textContent = '';
+        const titles = new Set();
 
         if(data.feeds && data.feeds.length > 0){
-            data.feeds.forEach((podcast) => {
-                const card = createCard(podcast);
-                responseContainer.appendChild(card);
+            data.feeds.forEach((podcast, index) => {
+                if (podcast.episodeCount > 0 && !titles.has(podcast.title)){
+                    titles.add(podcast.title);
+                    const card = createCard(podcast);
+                    responseContainer.appendChild(card);
+                    if(index >= 25){
+                        card.querySelector('img').dataset.src = card.querySelector('img').src;
+                        card.querySelector('img').src = '';
+                    }
+                }
+                handleImageLoad(25);
+                
             });
         }
         else{
@@ -101,10 +150,94 @@ document.addEventListener("DOMContentLoaded", () => {
         responseContainer.innerText = `Error: ${error.message}`;
     }
   }
+
+  //Load Episodes
+    async function loadEpisodes(feedId, count) {
+        if (!feedId) return;
+
+        showLoader();
+
+        try{
+            const response = await fetch(`/api/episodes?feedId=${encodeURIComponent(feedId)}&max=${count}`);
+
+            const data = await response.json();
+            responseContainer.textContent = '';
+
+            if(data.items && data.items.length > 0){
+                data.items.forEach((episode) => {
+                    const card = createEpisodeCard(episode);
+                    responseContainer.appendChild(card);
+                    if(index >= 25){
+                        card.querySelector('img').dataset.src = card.querySelector('img').src;
+                        card.querySelector('img').src = '';
+                    }
+                });
+            }
+            else{
+                responseContainer.innerText = 'No Results Found';
+            }
+            handleImageLoad(25);
+        }catch(error){
+            responseContainer.innerText = `Error: ${error.message}`;
+        }
+    }
+
+    //create episode card
+    function createEpisodeCard(episode){
+        const card = document.createElement('div');
+        card.className= 'card';
+
+        const img = document.createElement('img');
+        img.src = episode.image || episode.feedImage || './podcast-default.png';
+        img.alt = episode.title;
+
+        const content = document.createElement('div');
+        content.className = 'card-content';
+
+        const title = document.createElement('h3');
+        title.innerText = episode.title;
+
+        const iconContainer = document.createElement('div');
+        iconContainer.className = 'icon-container'
+
+        const playBtnIcon = document.createElement('i');
+        playBtnIcon.className = 'fas fa-play-circle mr-10';
+        playBtnIcon.title = 'Play Podcast';
+        playBtnIcon.addEventListener('click', () => {
+            console.log('Episode played', episode);
+        });
+
+        const queueBtnIcon = document.createElement('i');
+        queueBtnIcon.className = 'fas fa-list';
+        queueBtnIcon.title = 'Add to Queue';
+        queueBtnIcon.addEventListener('click', () => {
+            console.log('Episode queued', episode);
+        });
+
+        const description = document.createElement('p');
+        description.innerHTML = episode.description;
+        
+        const pubDate = document.createElement('p');
+        pubDate.className = 'pub-date-alt';
+        pubDate.innerText = `Published: ${episode.datePublished ? formatDate(episode.datePublished) : "Not Available"}`;
+
+        iconContainer.appendChild(playBtnIcon);
+        iconContainer.appendChild(queueBtnIcon);
+        iconContainer.appendChild(pubDate)
+        
+        content.appendChild(title);
+        content.appendChild(iconContainer);
+        content.appendChild(description);
+        card.appendChild(img);
+        card.appendChild(content);
+        
+        return card;
+    }
+  
   // Create Podcast Card
   function createCard(podcast){
     const card = document.createElement('div');
-    card.className= 'card';
+    card.className= 'card pointer';
     const img = document.createElement('img');
     img.src = podcast.image || './podcast-default.png';
     img.alt = podcast.title;
@@ -128,6 +261,9 @@ document.addEventListener("DOMContentLoaded", () => {
     content.appendChild(pubDate);
     card.appendChild(img);
     card.appendChild(content);
+    card.addEventListener('click', () => {
+        loadEpisodes(podcast.itunesId, podcast.episodeCount);
+    });
     return card;
   }
   // Navigation
